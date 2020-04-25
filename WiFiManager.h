@@ -153,7 +153,7 @@ class WiFiManager
 
     //manually start the config portal, autoconnect does this automatically on connect failure
     boolean       startConfigPortal(WiFiMode_t mode); // auto generates apname
-    boolean       startConfigPortal(char const *apName, char const *apPassword = NULL, WiFiMode_t mode mode);
+    boolean       startConfigPortal(char const *apName, char const *apPassword = NULL, WiFiMode_t mode);
 
     //manually stop the config portal if started manually, stop immediatly if non blocking, flag abort if blocking
     bool          stopConfigPortal();
