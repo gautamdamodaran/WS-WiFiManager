@@ -1,3 +1,6 @@
+**Forked for developing a weather station**
+**Work is in progress**
+
 
 # WiFiManager
 ESP8266 WiFi Connection manager with fallback web configuration portal
