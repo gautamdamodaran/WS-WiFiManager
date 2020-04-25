@@ -628,7 +628,8 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
 boolean WiFiManager::process(){
     if(webPortalActive || (configPortalActive && !_configPortalIsBlocking)){
         uint8_t state = processConfigPortal();
-        return state == WL_CONNECTED;
+        return true;
+        //return state == WL_CONNECTED;
     }
     return false;
 }
