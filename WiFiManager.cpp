@@ -339,7 +339,7 @@ boolean WiFiManager::autoConnect(char const *apName, char const *apPassword) {
   else DEBUG_WM(F("No Credentials are Saved, skipping connect"));
 
   // not connected start configportal
-  return startConfigPortal(apName, apPassword);
+  return startConfigPortal(apName, apPassword, WIFI_AP);
 }
 
 // CONFIG PORTAL
@@ -473,14 +473,18 @@ void WiFiManager::setupConfigPortal() {
   DEBUG_WM(F("Starting Web Portal"));
 
   // setup dns and web servers
-  dnsServer.reset(new DNSServer());
-  server.reset(new WM_WebServer(80));
 
-  /* Setup the DNS server redirecting all the domains to the apIP */
-  dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
-  // DEBUG_WM("dns server started port: ",DNS_PORT);
-  DEBUG_WM(DEBUG_DEV,"dns server started with ip: ",WiFi.softAPIP());
-  dnsServer->start(DNS_PORT, F("*"), WiFi.softAPIP());
+  if (WiFi.getMode() & WIFI_AP){
+    dnsServer.reset(new DNSServer());
+
+    /* Setup the DNS server redirecting all the domains to the apIP */
+    dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+    // DEBUG_WM("dns server started port: ",DNS_PORT);
+    DEBUG_WM(DEBUG_DEV, "dns server started with ip: ", WiFi.softAPIP());
+    dnsServer->start(DNS_PORT, F("*"), WiFi.softAPIP());
+  }
+
+  server.reset(new WM_WebServer(80));
 
   // @todo new callback, webserver started, callback cannot override handlers, but can grab them first
 
@@ -501,6 +505,9 @@ void WiFiManager::setupConfigPortal() {
   server->on(String(FPSTR(R_close)).c_str(),      std::bind(&WiFiManager::handleClose, this));
   server->on(String(FPSTR(R_erase)).c_str(),      std::bind(&WiFiManager::handleErase, this, false));
   server->on(String(FPSTR(R_status)).c_str(),     std::bind(&WiFiManager::handleWiFiStatus, this));
+  //WS specific pages
+  server->on(String(FPSTR(R_status)).c_str(),     std::bind(&WiFiManager::handleWiFiStatus, this));
+
   server->onNotFound (std::bind(&WiFiManager::handleNotFound, this));
   
   server->begin(); // Web server start
@@ -509,9 +516,9 @@ void WiFiManager::setupConfigPortal() {
   if(_preloadwifiscan) WiFi_scanNetworks(true,true); // preload wifiscan , async
 }
 
-boolean WiFiManager::startConfigPortal() {
+boolean WiFiManager::startConfigPortal(WiFiMode_t mode) {
   String ssid = getDefaultAPName();
-  return startConfigPortal(ssid.c_str(), NULL);
+  return startConfigPortal(ssid.c_str(), NULL, mode);
 }
 
 /**
@@ -521,22 +528,15 @@ boolean WiFiManager::startConfigPortal() {
  * @param  {[type]} char const         *apPassword [description]
  * @return {[type]}      [description]
  */
-boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPassword) {
+boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPassword, WiFiMode_t mode) {
   _begin();
 
   //setup AP
-  _apName     = apName; // @todo check valid apname ?
-  _apPassword = apPassword;
   
-  DEBUG_WM(DEBUG_VERBOSE,F("Starting Config Portal"));
-
-  if(_apName == "") _apName = getDefaultAPName();
-
-  if(!validApPassword()) return false;
   
   // HANDLE issues with STA connections, shutdown sta if not connected, or else this will hang channel scanning and softap will not respond
   // @todo sometimes still cannot connect to AP for no known reason, no events in log either
-  if(_disableSTA || (!WiFi.isConnected() && _disableSTAConn)){
+  /*if(_disableSTA || (!WiFi.isConnected() && _disableSTAConn)){
     // this fixes most ap problems, however, simply doing mode(WIFI_AP) does not work if sta connection is hanging, must `wifi_station_disconnect` 
     WiFi_Disconnect();
     WiFi_enableSTA(false);
@@ -545,6 +545,28 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
   else {
     // @todo even if sta is connected, it is possible that softap connections will fail, IOS says "invalid password", windows says "cannot connect to this network" researching
     WiFi_enableSTA(true);
+  }*/
+
+  // start access point
+  if(mode == WIFI_AP){  //STA+AP may not funtion properly
+
+    _apName = apName; // @todo check valid apname ?
+    _apPassword = apPassword;
+
+    DEBUG_WM(DEBUG_VERBOSE, F("Starting Config Portal"));
+
+    if (_apName == "")
+      _apName = getDefaultAPName();
+
+    if (!validApPassword())
+      return false;
+
+    WiFi_Disconnect();
+    WiFi_enableSTA(false);
+    DEBUG_WM(DEBUG_VERBOSE,F("Disabling STA"));
+    DEBUG_WM(DEBUG_VERBOSE,F("Enabling AP"));
+    startAP();
+    WiFiSetCountry();
   }
 
   // init configportal globals to known states
@@ -553,11 +575,6 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
   uint8_t state;
 
   _configPortalStart = millis();
-
-  // start access point
-  DEBUG_WM(DEBUG_VERBOSE,F("Enabling AP"));
-  startAP();
-  WiFiSetCountry();
 
   // do AP callback if set
   if ( _apcallback != NULL) {
@@ -572,6 +589,9 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
     DEBUG_WM(DEBUG_VERBOSE,F("Config Portal Running, non blocking/processing"));
     return result;
   }
+
+
+  //TODO if blocking portal enabled
 
   DEBUG_WM(DEBUG_VERBOSE,F("Config Portal Running, blocking, waiting for clients..."));
   // blocking loop waiting for config

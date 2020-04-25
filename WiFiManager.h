@@ -293,7 +293,7 @@ class WiFiManager
     
     // set the country code for wifi settings
     void          setCountry(String cc);
-    // set body class (invert)
+    // set html body class (invert)
     void          setClass(String str);
     String        getDefaultAPName();
     
@@ -381,7 +381,7 @@ class WiFiManager
     String        _bodyClass              = ""; // class to add to body
 
     // internal options
-    boolean       _preloadwifiscan        = true;  // preload wifiscan if true
+    boolean       _preloadwifiscan        = false;  // preload wifiscan if true
     boolean       _asyncScan              = false;
     unsigned int  _scancachetime          = 30000; // ms cache time for background scans
     boolean       _disableIpFields        = false; // modify function of setShow_X_Fields(false), forces ip fields off instead of default show if set, eg. _staShowStaticFields=-1
