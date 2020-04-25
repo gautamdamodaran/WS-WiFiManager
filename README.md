@@ -1,5 +1,4 @@
-**Forked for developing a weather station**
-**Work is in progress**
+**Forked for developing a weather station**. **Work is in progress**
 
 
 # WiFiManager
