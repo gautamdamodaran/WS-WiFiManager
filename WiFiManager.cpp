@@ -9,7 +9,7 @@
  * @version 0.0.0
  * @license MIT
  */
-
+#define ESP8266
 #include "WiFiManager.h"
 
 #if defined(ESP8266) || defined(ESP32)
@@ -449,7 +449,8 @@ boolean WiFiManager::configPortalHasTimeout(){
       return false;
     }
     // handle timeout
-    if(_webClientCheck && (_webPortalAccessed>_configPortalStart)>0) _configPortalStart = _webPortalAccessed;
+    if(_webClientCheck && (_webPortalAccessed > _configPortalStart) > 0) 
+      _configPortalStart = _webPortalAccessed;
 
     if(millis() > _configPortalStart + _configPortalTimeout){
       DEBUG_WM(F("config portal has timed out"));
@@ -513,7 +514,7 @@ void WiFiManager::setupConfigPortal() {
   server->begin(); // Web server start
   DEBUG_WM(DEBUG_VERBOSE,F("HTTP server started"));
 
-  if(_preloadwifiscan) WiFi_scanNetworks(true,true); // preload wifiscan , async
+  if(_preloadwifiscan) WiFi_scanNetworks(true, true); // (bool force,bool async) preload wifiscan , async
 }
 
 boolean WiFiManager::startConfigPortal(WiFiMode_t mode) {
@@ -562,8 +563,8 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
       return false;
 
     WiFi_Disconnect();
-    WiFi_enableSTA(false);
-    DEBUG_WM(DEBUG_VERBOSE,F("Disabling STA"));
+    // WiFi_enableSTA(false);
+    // DEBUG_WM(DEBUG_VERBOSE,F("Disabling STA"));
     DEBUG_WM(DEBUG_VERBOSE,F("Enabling AP"));
     startAP();
     WiFiSetCountry();
@@ -586,8 +587,8 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
   setupConfigPortal();
 
   if(!_configPortalIsBlocking){
-    DEBUG_WM(DEBUG_VERBOSE,F("Config Portal Running, non blocking/processing"));
-    return result;
+    DEBUG_WM(DEBUG_VERBOSE,F("Config Portal started in non blocking/processing"));
+    return _hasBegun;
   }
 
 
@@ -625,73 +626,90 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
  * @access public
  * @return {[type]} [description]
  */
-boolean WiFiManager::process(){
-    if(webPortalActive || (configPortalActive && !_configPortalIsBlocking)){
-        uint8_t state = processConfigPortal();
-        return true;
-        //return state == WL_CONNECTED;
-    }
-    return false;
+boolean WiFiManager::process()
+{
+  if (webPortalActive || (configPortalActive && !_configPortalIsBlocking) && !configPortalHasTimeout())
+  {
+    uint8_t state = processConfigPortal();
+    if (state == WL_CONNECTED)
+      return true;
+  }
+
+  return false;
 }
 
 //using esp enums returns for now, should be fine
 uint8_t WiFiManager::processConfigPortal(){
-    //DNS handler
+  //DNS handler
+  if (WiFi.getMode() & WIFI_AP)
     dnsServer->processNextRequest();
-    //HTTP handler
-    server->handleClient();
+  //HTTP handler
+  server->handleClient();
 
-    // Waiting for save...
-    if(connect) {
-      connect = false;
-      DEBUG_WM(DEBUG_VERBOSE,F("processing save"));
-      if(_enableCaptivePortal) delay(_cpclosedelay); // keeps the captiveportal from closing to fast.
+  //TODO saving paramas
+  // Waiting for save...
+  
+  
+  if (connect)
+  {
+    connect = false;
+    DEBUG_WM(DEBUG_VERBOSE, F("processing save"));
+    if (_enableCaptivePortal)
+      delay(_cpclosedelay); // keeps the captiveportal from closing to fast.
 
-      // skip wifi if no ssid
-      if(_ssid == ""){
-        DEBUG_WM(DEBUG_VERBOSE,F("No ssid, skipping wifi save"));
-      }
-      else{
-        // attempt sta connection to submitted _ssid, _pass
-        if (connectWifi(_ssid, _pass) == WL_CONNECTED) {
-          
-          DEBUG_WM(F("Connect to new AP [SUCCESS]"));
-          DEBUG_WM(F("Got IP Address:"));
-          DEBUG_WM(WiFi.localIP());
+    // skip wifi if no ssid
+    if (_ssid == "")
+    {
+      DEBUG_WM(DEBUG_VERBOSE, F("No ssid, skipping wifi save"));
+    }
+    else
+    {
+      // attempt sta connection to submitted _ssid, _pass
+      if (connectWifi(_ssid, _pass) == WL_CONNECTED)
+      {
 
-          if ( _savewificallback != NULL) {
-            _savewificallback();
-          }
-          shutdownConfigPortal();
-          return WL_CONNECTED; // CONNECT SUCCESS
-        }
-        DEBUG_WM(DEBUG_ERROR,F("[ERROR] Connect to new AP Failed"));
-      }
- 
-      if (_shouldBreakAfterConfig) {
+        DEBUG_WM(F("Connect to new AP [SUCCESS]"));
+        DEBUG_WM(F("Got IP Address:"));
+        DEBUG_WM(WiFi.localIP());
 
-        // do save callback
-        // @todo this is more of an exiting callback than a save, clarify when this should actually occur
-        // confirm or verify data was saved to make this more accurate callback
-        if ( _savewificallback != NULL) {
-          DEBUG_WM(DEBUG_VERBOSE,F("WiFi/Param save callback"));
+        if (_savewificallback != NULL)
+        {
           _savewificallback();
         }
         shutdownConfigPortal();
-        return WL_CONNECT_FAILED; // CONNECT FAIL
+        return WL_CONNECTED; // CONNECT SUCCESS
       }
-      else{
-        // clear save strings
-        _ssid = "";
-        _pass = "";
-        // if connect fails, turn sta off to stabilize AP
-        WiFi_Disconnect();
-        WiFi_enableSTA(false);
-        DEBUG_WM(DEBUG_VERBOSE,F("Disabling STA"));
-      }
+      DEBUG_WM(DEBUG_ERROR, F("[ERROR] Connect to new AP Failed"));
     }
 
-    return WL_IDLE_STATUS;
+    if (_shouldBreakAfterConfig)
+    {
+
+      // do save callback
+      // @todo this is more of an exiting callback than a save, clarify when this should actually occur
+      // confirm or verify data was saved to make this more accurate callback
+      if (_savewificallback != NULL)
+      {
+        DEBUG_WM(DEBUG_VERBOSE, F("WiFi/Param save callback"));
+        _savewificallback();
+      }
+      shutdownConfigPortal();
+      return WL_CONNECT_FAILED; // CONNECT FAIL
+    }
+    else
+    {
+      // clear save strings
+      _ssid = "";
+      _pass = "";
+      // if connect fails, turn sta off to stabilize AP
+      WiFi_Disconnect();
+      WiFi_enableSTA(false);
+      DEBUG_WM(DEBUG_VERBOSE, F("Disabling STA"));
+    }
+    }
+    
+
+    return WiFi.status();
 }
 
 /**
@@ -700,18 +718,29 @@ uint8_t WiFiManager::processConfigPortal(){
  * @return bool success (softapdisconnect)
  */
 bool WiFiManager::shutdownConfigPortal(){
+
+  bool ret = true;
+
   if(webPortalActive) return false;
 
   //DNS handler
-  dnsServer->processNextRequest();
+  if (WiFi.getMode() & WIFI_AP)
+  {
+    dnsServer->processNextRequest();
+    dnsServer->stop(); //  free heap ?
+    dnsServer.reset();
+
+    ret = WiFi.softAPdisconnect(false);
+    if (!ret)
+      DEBUG_WM(DEBUG_ERROR, F("[ERROR] disconnect configportal - softAPdisconnect FAILED"));
+    delay(1000);
+  }
   //HTTP handler
   server->handleClient();
 
   // @todo what is the proper way to shutdown and free the server up
   server->stop();
   server.reset();
-  dnsServer->stop(); //  free heap ?
-  dnsServer.reset();
 
   WiFi.scanDelete(); // free wifi scan results
 
@@ -723,18 +752,18 @@ bool WiFiManager::shutdownConfigPortal(){
   // [APdisconnect] set_config failed! *WM: disconnect configportal - softAPdisconnect failed
   // still no way to reproduce reliably
   DEBUG_WM(DEBUG_VERBOSE,F("disconnect configportal"));
-  bool ret = false;
-  ret = WiFi.softAPdisconnect(false);
-  if(!ret)DEBUG_WM(DEBUG_ERROR,F("[ERROR] disconnect configportal - softAPdisconnect FAILED"));
-  delay(1000);
-  DEBUG_WM(DEBUG_VERBOSE,"restoring usermode",getModeString(_usermode));
-  WiFi_Mode(_usermode); // restore users wifi mode, BUG https://github.com/esp8266/Arduino/issues/4372
-  if(WiFi.status()==WL_IDLE_STATUS){
-    WiFi.reconnect(); // restart wifi since we disconnected it in startconfigportal
-    DEBUG_WM(DEBUG_VERBOSE,"WiFi Reconnect, was idle");
-  }
-  DEBUG_WM(DEBUG_VERBOSE,"wifi status:",getWLStatusString(WiFi.status()));
-  DEBUG_WM(DEBUG_VERBOSE,"wifi mode:",getModeString(WiFi.getMode()));
+ 
+
+
+  // DEBUG_WM(DEBUG_VERBOSE,"restoring usermode",getModeString(_usermode));
+  // WiFi_Mode(_usermode); // restore users wifi mode, BUG https://github.com/esp8266/Arduino/issues/4372
+  // if(WiFi.status() == WL_IDLE_STATUS){
+  //   WiFi.reconnect(); // restart wifi since we disconnected it in startconfigportal
+  //   DEBUG_WM(DEBUG_VERBOSE,"WiFi Reconnect, was idle");
+  // }
+  // DEBUG_WM(DEBUG_VERBOSE,"wifi status:",getWLStatusString(WiFi.status()));
+  // DEBUG_WM(DEBUG_VERBOSE,"wifi mode:",getModeString(WiFi.getMode()));
+
   configPortalActive = false;
   _end();
   return ret;
@@ -966,7 +995,7 @@ void WiFiManager::handleRoot() {
   handleRequest();
   String page = getHTTPHead(FPSTR(S_options)); // @token options @todo replace options with title
   String str  = FPSTR(HTTP_ROOT_MAIN);
-  str.replace(FPSTR(T_v),configPortalActive ? _apName : WiFi.localIP().toString()); // use ip if ap is not active for heading
+  str.replace(FPSTR(T_v),configPortalActive ? _apName : WiFi.localIP().toString()); // use ip if ap is not active for page heading
   page += str;
   page += FPSTR(HTTP_PORTAL_OPTIONS);
   page += getMenuOut();
@@ -1405,7 +1434,8 @@ void WiFiManager::handleWifiSave() {
 
   DEBUG_WM(DEBUG_DEV,F("Sent wifi save page"));
 
-  connect = true; //signal ready to connect/reset process in processConfigPortal
+  //@TODO temp workaround 
+  connect = false; //signal ready to connect/reset process in processConfigPortal
 }
 
 void WiFiManager::handleParamSave() {
@@ -2635,6 +2665,12 @@ boolean WiFiManager::isIp(String str) {
     }
   }
   return true;
+}
+
+/**get status of config portal**/
+boolean WiFiManager::isConfigPortalActive()
+{
+  return configPortalActive;
 }
 
 /** IP to String? */

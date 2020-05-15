@@ -1,6 +1,14 @@
 /**
  * WiFiManager.h
  * 
+ * WiFiManager, a library for the ESP8266/Arduino platform customised for Weather station
+ * @author 
+ * @license MIT
+ **/
+
+/**
+ * WiFiManager.h
+ * 
  * WiFiManager, a library for the ESP8266/Arduino platform
  * for configuration of WiFi credentials using a Captive Portal
  * 
@@ -284,6 +292,9 @@ class WiFiManager
     String        getWiFiPass(bool persistent = false);
     // helper to get saved password, if persistent get stored, else get current if connected
     String        getWiFiSSID(bool persistent = false);
+
+    //get status of config portal
+    bool          isConfigPortalActive();
 
     // debug output the softap config
     void          debugSoftAPConfig();
