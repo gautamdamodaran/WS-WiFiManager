@@ -26,6 +26,8 @@
 
 #ifdef ESP8266
 #include <core_version.h>
+
+#include <EEPROM.h>
 #endif
 
 #include <vector>
@@ -158,6 +160,11 @@ class WiFiManager
     // auto connect to saved wifi, or custom, and start config portal on failures
     boolean       autoConnect();
     boolean       autoConnect(char const *apName, char const *apPassword = NULL);
+
+    // auto connect to as station
+    boolean autoConnectSTA();
+    boolean autoConnectSTA(char const *apName, char const *apPassword, bool async = false);
+
 
     //manually start the config portal, autoconnect does this automatically on connect failure
     boolean       startConfigPortal(WiFiMode_t mode); // auto generates apname
@@ -332,6 +339,27 @@ class WiFiManager
     IPAddress     _sta_static_sn;
     IPAddress     _sta_static_dns;
 
+    struct
+    {
+      char ssid0[20];
+      char ssid1[20];
+      char password0[20];
+      char password1[20];
+      IPAddress ip;
+      IPAddress gw;
+      IPAddress sn;
+      IPAddress dns;  
+      uint8_t hash[20];
+
+    }_sta_settings;
+
+    int _sta_settings_offset = 0; //eeprom addr offset
+
+    EEPROMClass nvmem;
+  
+
+
+
     // defaults
     const byte    DNS_PORT                = 53;
     const byte    HTTP_PORT               = 80;
@@ -371,12 +399,12 @@ class WiFiManager
 
     // parameter options
     int           _minimumQuality         = -1;    // filter wifiscan ap by this rssi
-    int            _staShowStaticFields   = 0;     // ternary 1=always show static ip fields, 0=only if set, -1=never(cannot change ips via web!)
-    int            _staShowDns            = 0;     // ternary 1=always show dns, 0=only if set, -1=never(cannot change dns via web!)
+    int            _staShowStaticFields   = 1;     // ternary 1=always show static ip fields, 0=only if set, -1=never(cannot change ips via web!)
+    int            _staShowDns            = 1;     // ternary 1=always show dns, 0=only if set, -1=never(cannot change dns via web!)
     boolean       _removeDuplicateAPs     = true;  // remove dup aps from wifiscan
     boolean       _showPassword           = false; // show or hide saved password on wifi form, might be a security issue!
     boolean       _shouldBreakAfterConfig = false; // stop configportal on save failure
-    boolean       _configPortalIsBlocking = true;  // configportal enters blocking loop 
+    boolean       _configPortalIsBlocking = false;  // configportal enters blocking loop 
     boolean       _enableCaptivePortal    = true;  // enable captive portal redirection
     boolean       _userpersistent         = false;  // users !preffered persistence to restore
     boolean       _wifiAutoReconnect      = true;  // there is no platform getter for this, we must assume its true and make it so
@@ -412,6 +440,9 @@ class WiFiManager
     boolean       _tryWPS                 = false; // try WPS on save failure, unsupported
     void          startWPS();
 #endif
+
+
+    
 
     bool          startAP();
 
@@ -464,6 +495,9 @@ class WiFiManager
     bool          WiFi_scanNetworks(unsigned int cachetime);
     void          WiFi_scanComplete(int networksFound);
     bool          WiFiSetCountry();
+
+    void WiFi_commitSTASettings();
+    bool WiFi_getSTASettings();
 
     #ifdef ESP32
     void   WiFiEvent(WiFiEvent_t event, system_event_info_t info);

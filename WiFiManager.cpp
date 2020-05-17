@@ -11,6 +11,7 @@
  */
 #define ESP8266
 #include "WiFiManager.h"
+#include <Hash.h>
 
 #if defined(ESP8266) || defined(ESP32)
 
@@ -342,6 +343,70 @@ boolean WiFiManager::autoConnect(char const *apName, char const *apPassword) {
   return startConfigPortal(apName, apPassword, WIFI_AP);
 }
 
+
+/**
+ * 
+ * 
+ */
+boolean WiFiManager::autoConnectSTA(){
+
+  autoConnectSTA("", "", false);
+
+}
+
+boolean WiFiManager::autoConnectSTA(char const *apName, char const *apPassword, bool async) {
+
+
+  //@TODO rssi advantage, password check, 2+ ssid/ ssid list
+
+  if(WiFi.status() != WL_CONNECTED) //@TODO add conditions
+  {
+    WiFi_scanNetworks(false, false); //no force, no async
+
+    WiFi_getSTASettings(); //get saved settings
+
+    for (int8_t i = 0; i < _numNetworks; ++i)
+    {
+
+      
+
+      String ssid_scan;
+      int32_t rssi_scan;
+      uint8_t sec_scan;
+      uint8_t *BSSID_scan;
+      int32_t chan_scan;
+      bool hidden_scan;
+
+      WiFi.getNetworkInfo(i, ssid_scan, sec_scan, rssi_scan, BSSID_scan, chan_scan, hidden_scan);
+
+      if(ssid_scan == _sta_settings.ssid0){
+
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(_sta_settings.ssid0, _sta_settings.password0);
+        
+        DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
+        return true;
+
+
+      }
+      else if (ssid_scan == _sta_settings.ssid1){
+        
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(_sta_settings.ssid1, _sta_settings.password1);
+
+        DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
+        return true;
+
+      }
+
+    }
+  }
+  DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: FAILED"));
+  return false;
+  
+}
+
+
 // CONFIG PORTAL
 bool WiFiManager::startAP(){
   bool ret = true;
@@ -631,7 +696,7 @@ boolean WiFiManager::process()
   if (webPortalActive || (configPortalActive && !_configPortalIsBlocking) && !configPortalHasTimeout())
   {
     uint8_t state = processConfigPortal();
-    if (state == WL_CONNECTED)
+    if (state == WL_CONNECTED) //@TODO better return result
       return true;
   }
 
@@ -780,7 +845,7 @@ uint8_t WiFiManager::connectWifi(String ssid, String pass) {
   setSTAConfig();
   //@todo catch failures in set_config
   
-  // make sure sta is on before `begin` so it does not call enablesta->mode while persistent is ON ( which would save WM AP state to eeprom !)
+  // make sure sta is on before `begin` so it does not call enablesta->mode while persistent is ON ( which would save WM AP state to nvmem !)
   
   if(_cleanConnect) WiFi_Disconnect(); // disconnect before begin, in case anything is hung, this causes a 2 seconds delay for connect
   // @todo find out what status is when this is needed, can we detect it and handle it, say in between states or idle_status
@@ -1040,6 +1105,7 @@ void WiFiManager::handleWifi(boolean scan) {
   }
   page += pitem;
 
+//@TODO option based on static flag
   page += getStaticOut();
   page += FPSTR(HTTP_FORM_WIFI_END);
   if(_paramsInWifi && _paramsCount>0){
@@ -1108,16 +1174,16 @@ void WiFiManager::WiFi_scanComplete(int networksFound){
 }
 
 bool WiFiManager::WiFi_scanNetworks(){
-  return WiFi_scanNetworks(false,false);
+  return WiFi_scanNetworks(false, false);
 }
 
 bool WiFiManager::WiFi_scanNetworks(unsigned int cachetime,bool async){
-    return WiFi_scanNetworks(millis()-_lastscan > cachetime,async);
+    return WiFi_scanNetworks(millis()-_lastscan > cachetime, async);
 }
 bool WiFiManager::WiFi_scanNetworks(unsigned int cachetime){
-    return WiFi_scanNetworks(millis()-_lastscan > cachetime,false);
+    return WiFi_scanNetworks(millis()-_lastscan > cachetime, false);
 }
-bool WiFiManager::WiFi_scanNetworks(bool force,bool async){
+bool WiFiManager::WiFi_scanNetworks(bool force,bool async){ 
     // DEBUG_WM(DEBUG_DEV,"scanNetworks async:",async == true);
     // DEBUG_WM(DEBUG_DEV,_numNetworks,(millis()-_lastscan ));
     // DEBUG_WM(DEBUG_DEV,"scanNetworks force:",force == true);
@@ -1277,20 +1343,29 @@ String WiFiManager::getIpForm(String id, String title, String value){
 
 String WiFiManager::getStaticOut(){
   String page;
-  if ((_staShowStaticFields || _sta_static_ip) && _staShowStaticFields>=0) {
+  IPAddress addr;
+  if ((_staShowStaticFields || _sta_static_ip) && _staShowStaticFields >= 0) {
+
+    WiFi_getSTASettings();
+    
+
     DEBUG_WM(DEBUG_DEV,"_staShowStaticFields");
     page += FPSTR(HTTP_FORM_STATIC_HEAD);
     // @todo how can we get these accurate settings from memory , wifi_get_ip_info does not seem to reveal if struct ip_info is static or not
-    page += getIpForm(FPSTR(S_ip),FPSTR(S_staticip),(_sta_static_ip ? _sta_static_ip.toString() : "")); // @token staticip
+    addr = _sta_settings.ip;
+    page += getIpForm(FPSTR(S_ip),FPSTR(S_staticip), addr.toString()); // @token staticip
     // WiFi.localIP().toString();
-    page += getIpForm(FPSTR(S_gw),FPSTR(S_staticgw),(_sta_static_gw ? _sta_static_gw.toString() : "")); // @token staticgw
+    addr = _sta_settings.gw;
+    page += getIpForm(FPSTR(S_gw),FPSTR(S_staticgw),(addr.toString())); // @token staticgw
     // WiFi.gatewayIP().toString();
-    page += getIpForm(FPSTR(S_sn),FPSTR(S_subnet),(_sta_static_sn ? _sta_static_sn.toString() : "")); // @token subnet
+    addr = _sta_settings.sn;
+    page += getIpForm(FPSTR(S_sn),FPSTR(S_subnet),(addr.toString())); // @token subnet
     // WiFi.subnetMask().toString();
   }
 
-  if((_staShowDns || _sta_static_dns) && _staShowDns>=0){
-    page += getIpForm(FPSTR(S_dns),FPSTR(S_staticdns),(_sta_static_dns ? _sta_static_dns.toString() : "")); // @token dns
+  if((_staShowDns || _sta_static_dns) && _staShowDns >= 0){
+    addr = _sta_settings.dns;
+    page += getIpForm(FPSTR(S_dns),FPSTR(S_staticdns),(addr.toString())); // @token dns
   }
 
   if(page!="") page += FPSTR(HTTP_BR); // @todo remove these, use css
@@ -1389,15 +1464,19 @@ void WiFiManager::handleWifiSave() {
   }
 
   //SAVE/connect here
-  _ssid = server->arg(F("s")).c_str();
-  _pass = server->arg(F("p")).c_str();
+  // _ssid = server->arg(F("s")).c_str();
+  // _pass = server->arg(F("p")).c_str();
+
+  //TODO list,
+  strcpy(_sta_settings.ssid0, server->arg(F("s")).c_str());
+  strcpy(_sta_settings.password0, server->arg(F("p")).c_str());
 
   if(_paramsInWifi) doParamSave();
 
   if (server->arg(FPSTR(S_ip)) != "") {
     //_sta_static_ip.fromString(server->arg(FPSTR(S_ip));
     String ip = server->arg(FPSTR(S_ip));
-    optionalIPFromString(&_sta_static_ip, ip.c_str());
+    optionalIPFromString(&_sta_settings.ip, ip.c_str());
     DEBUG_WM(DEBUG_DEV,F("static ip:"),ip);
   }
   if (server->arg(FPSTR(S_gw)) != "") {
@@ -1416,6 +1495,9 @@ void WiFiManager::handleWifiSave() {
     DEBUG_WM(DEBUG_DEV,F("static DNS:"),dns);
   }
 
+  //save to nvmem
+  WiFi_commitSTASettings();
+  
   String page;
 
   if(_ssid == ""){
@@ -1436,6 +1518,7 @@ void WiFiManager::handleWifiSave() {
 
   //@TODO temp workaround 
   connect = false; //signal ready to connect/reset process in processConfigPortal
+
 }
 
 void WiFiManager::handleParamSave() {
@@ -2965,5 +3048,38 @@ void WiFiManager::WiFi_autoReconnect(){
     // }
   #endif
 }
+
+
+void WiFiManager::WiFi_commitSTASettings()
+{
+  
+  sha1((uint8_t *)&_sta_settings, sizeof(_sta_settings) - 20, _sta_settings.hash);
+
+
+  nvmem.begin(sizeof(_sta_settings));
+  nvmem.put(_sta_settings_offset, _sta_settings);
+  nvmem.end();
+}
+
+bool WiFiManager::WiFi_getSTASettings()
+{
+ 
+  nvmem.begin(sizeof(_sta_settings));
+  nvmem.get(_sta_settings_offset, _sta_settings);
+  nvmem.end();
+  uint8_t hash[20];
+  sha1((uint8_t *)&_sta_settings, sizeof(_sta_settings) - 20, hash);
+  bool dataCorrupted = false;
+  for (int i = 0; i < 20; i++)
+  {
+    if (_sta_settings.hash[i] != hash[i])
+    {
+      dataCorrupted = true;
+    }
+  }
+  return !dataCorrupted;
+}
+
+
 
 #endif
