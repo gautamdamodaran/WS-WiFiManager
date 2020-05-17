@@ -348,61 +348,69 @@ boolean WiFiManager::autoConnect(char const *apName, char const *apPassword) {
  * 
  * 
  */
-boolean WiFiManager::autoConnectSTA(){
+wl_status_t WiFiManager::autoConnectSTA(){
 
-  autoConnectSTA("", "", false);
+  autoConnectSTA("", "", false, false);
 
 }
 
-boolean WiFiManager::autoConnectSTA(char const *apName, char const *apPassword, bool async) {
+wl_status_t WiFiManager::autoConnectSTA(char const *apName, char const *apPassword, bool async, bool force) {
 
+ // unsigned long time = millis();
 
-  //@TODO rssi advantage, password check, 2+ ssid/ ssid list
-
-  if(WiFi.status() != WL_CONNECTED) //@TODO add conditions
-  {
-    WiFi_scanNetworks(false, false); //no force, no async
-
-    WiFi_getSTASettings(); //get saved settings
-
-    for (int8_t i = 0; i < _numNetworks; ++i)
+    if ((WiFi.status() != WL_CONNECTED && _autoConnectTimeOut == 0 )|| force) //@TODO add conditions
     {
+      WiFi_scanNetworks(false, false); //no force, no async
 
-      
+      WiFi_getSTASettings(); //get saved settings
 
-      String ssid_scan;
-      int32_t rssi_scan;
-      uint8_t sec_scan;
-      uint8_t *BSSID_scan;
-      int32_t chan_scan;
-      bool hidden_scan;
+      _autoConnectTimeOut = millis() + 5*1000;  //5 seconds try
 
-      WiFi.getNetworkInfo(i, ssid_scan, sec_scan, rssi_scan, BSSID_scan, chan_scan, hidden_scan);
+      for (int8_t i = 0; i < _numNetworks; ++i)
+      {
 
-      if(ssid_scan == _sta_settings.ssid0){
+        String ssid_scan;
+        int32_t rssi_scan;
+        uint8_t sec_scan;
+        uint8_t *BSSID_scan;
+        int32_t chan_scan;
+        bool hidden_scan;
 
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(_sta_settings.ssid0, _sta_settings.password0);
-        
-        DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
-        return true;
+        WiFi.getNetworkInfo(i, ssid_scan, sec_scan, rssi_scan, BSSID_scan, chan_scan, hidden_scan);
 
+        if (ssid_scan == _sta_settings.ssid0)
+        {
 
+          WiFi.mode(WIFI_STA);
+          WiFi.begin(_sta_settings.ssid0, _sta_settings.password0);
+
+          DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
+        }
+        else if (ssid_scan == _sta_settings.ssid1)
+        {
+
+          WiFi.mode(WIFI_STA);
+          WiFi.begin(_sta_settings.ssid1, _sta_settings.password1);
+
+          DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
+        }
       }
-      else if (ssid_scan == _sta_settings.ssid1){
-        
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(_sta_settings.ssid1, _sta_settings.password1);
-
-        DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: success"));
-        return true;
-
-      }
-
     }
+
+  if(millis() < _autoConnectTimeOut){
+
+    wl_status_t status = WiFi.status();
+    // @todo detect additional states, connect happens, then dhcp then get ip, there is some delay here, make sure not to timeout if waiting on IP
+    if (status == WL_CONNECTED || status == WL_CONNECT_FAILED) {
+      _autoConnectTimeOut = 0;
+      return status;
+    }
+    return WL_IDLE_STATUS;
   }
-  DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: FAILED"));
-  return false;
+
+  DEBUG_WM(DEBUG_VERBOSE, F("AutoConnect as staion: FAILED (time out)"));
+  _autoConnectTimeOut = 0;
+  return WL_CONNECT_FAILED;
   
 }
 
@@ -705,16 +713,20 @@ boolean WiFiManager::process()
 
 //using esp enums returns for now, should be fine
 uint8_t WiFiManager::processConfigPortal(){
+
+  bool ret = false; //@TODO more reliable method for detecting active AP mode
   //DNS handler
-  if (WiFi.getMode() & WIFI_AP)
+  if (WiFi.getMode() & WIFI_AP) {
     dnsServer->processNextRequest();
+    ret = true;
+    }
   //HTTP handler
   server->handleClient();
 
   //TODO saving paramas
   // Waiting for save...
   
-  
+  /*
   if (connect)
   {
     connect = false;
@@ -771,10 +783,10 @@ uint8_t WiFiManager::processConfigPortal(){
       WiFi_enableSTA(false);
       DEBUG_WM(DEBUG_VERBOSE, F("Disabling STA"));
     }
-    }
+    }*/
     
 
-    return WiFi.status();
+    return ret? WL_CONNECTED : WiFi.status();
 }
 
 /**
@@ -1495,7 +1507,7 @@ void WiFiManager::handleWifiSave() {
     DEBUG_WM(DEBUG_DEV,F("static DNS:"),dns);
   }
 
-  //save to nvmem
+  //save to nvmem @TODO may be move to end of processConfigPortal
   WiFi_commitSTASettings();
   
   String page;

@@ -162,8 +162,8 @@ class WiFiManager
     boolean       autoConnect(char const *apName, char const *apPassword = NULL);
 
     // auto connect to as station
-    boolean autoConnectSTA();
-    boolean autoConnectSTA(char const *apName, char const *apPassword, bool async = false);
+    wl_status_t autoConnectSTA();
+    wl_status_t autoConnectSTA(char const *apName, char const *apPassword, bool async = false, bool force = false);
 
 
     //manually start the config portal, autoconnect does this automatically on connect failure
@@ -426,6 +426,8 @@ class WiFiManager
     boolean       _disableIpFields        = false; // modify function of setShow_X_Fields(false), forces ip fields off instead of default show if set, eg. _staShowStaticFields=-1
 
     String        _wificountry            = "";  // country code, @todo define in strings lang
+
+    unsigned long _autoConnectTimeOut = 0;
 
     // wrapper functions for handling setting and unsetting persistent for now.
     bool          esp32persistent         = false;
